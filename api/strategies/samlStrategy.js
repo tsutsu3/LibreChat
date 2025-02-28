@@ -1,19 +1,53 @@
 const passport = require('passport');
-const { HttpsProxyAgent } = require('https-proxy-agent');
 const { Strategy: SamlStrategy } = require('passport-saml');
 const { findUser, createUser, updateUser } = require('~/models/userMethods');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { hashToken } = require('~/server/utils/crypto');
 const { logger } = require('~/config');
 const fetch = require('node-fetch');
-const fs = require('fs');
-const path = require('path');
 
 let crypto;
 try {
   crypto = require('node:crypto');
 } catch (err) {
   logger.error('[samlStrategy] crypto support is disabled!', err);
+}
+
+/**
+ * Retrieves a SAML claim from a profile object based on environment configuration.
+ * @param {object} profile - Saml profile
+ * @param {string} envVar - Environment variable name (SAML_*)
+ * @param {string} defaultKey -  Default key to use if the environment variable is not set
+ * @returns {string}
+ */
+function getSamlClaim(profile, envVar, defaultKey) {
+  const claimKey = process.env[envVar];
+
+  // Avoids accessing `profile[""]` when the environment variable is empty string.
+  if (claimKey) {
+    return profile[claimKey] ?? profile[defaultKey];
+  }
+  return profile[defaultKey];
+}
+
+function getEmail(profile) {
+  return getSamlClaim(profile, 'SAML_EMAIL_CLAIM', 'email');
+}
+
+function getUserName(profile) {
+  return getSamlClaim(profile, 'SAML_USERNAME_CLAIM', 'username');
+}
+
+function getGivenName(profile) {
+  return getSamlClaim(profile, 'SAML_GIVEN_NAME_CLAIM', 'given_name');
+}
+
+function getFamilyName(profile) {
+  return getSamlClaim(profile, 'SAML_FAMILY_NAME_CLAIM', 'family_name');
+}
+
+function getPicture(profile) {
+  return getSamlClaim(profile, 'SAML_PICTURE_CLAIM', 'picture');
 }
 
 /**
@@ -39,30 +73,31 @@ const downloadImage = async (url) => {
  * Determines the full name of a user based on SAML profile and environment configuration.
  *
  * @param {Object} profile - The user profile object from SAML Connect
- * @param {string} [profile.given_name] - The user's first name
- * @param {string} [profile.family_name] - The user's last name
- * @param {string} [profile.username] - The user's username
- * @param {string} [profile.email] - The user's email address
  * @returns {string} The determined full name of the user
  */
 function getFullName(profile) {
   if (process.env.SAML_NAME_CLAIM) {
+    logger.info(
+      `[samlStrategy] Using SAML_NAME_CLAIM: ${process.env.SAML_NAME_CLAIM}, profile: ${profile[process.env.SAML_NAME_CLAIM]}`,
+    );
     return profile[process.env.SAML_NAME_CLAIM];
   }
 
-  if (profile.given_name && profile.family_name) {
-    return `${profile.given_name} ${profile.family_name}`;
+  const givenName = getGivenName(profile);
+  const familyName = getFamilyName(profile);
+
+  if (givenName && familyName) {
+    return `${givenName} ${familyName}`;
   }
 
-  if (profile.given_name) {
-    return profile.given_name;
+  if (givenName) {
+    return givenName;
+  }
+  if (familyName) {
+    return familyName;
   }
 
-  if (profile.family_name) {
-    return profile.family_name;
-  }
-
-  return profile.username || profile.email;
+  return getUserName(profile) || getEmail(profile);
 }
 
 /**
@@ -106,7 +141,8 @@ async function setupSaml() {
           );
 
           if (!user) {
-            user = await findUser({ email: profile.email });
+            const email = getEmail(profile) || '';
+            user = await findUser({ email });
             logger.info(
               `[samlStrategy] User ${user ? 'found' : 'not found'} with email: ${profile.email}`,
             );
@@ -114,19 +150,16 @@ async function setupSaml() {
 
           const fullName = getFullName(profile);
 
-          let username = '';
-          if (process.env.SAML_USERNAME_CLAIM) {
-            username = profile[process.env.SAML_USERNAME_CLAIM];
-          } else {
-            username = convertToUsername(profile.username || profile.given_name || profile.email);
-          }
+          const username = convertToUsername(
+            getUserName(profile) || getGivenName(profile) || getEmail(profile),
+          );
 
           if (!user) {
             user = {
               provider: 'saml',
               samlId: profile.nameID,
               username,
-              email: profile.email || '',
+              email: getEmail(profile) || '',
               emailVerified: true,
               name: fullName,
             };
@@ -138,7 +171,8 @@ async function setupSaml() {
             user.name = fullName;
           }
 
-          if (profile.picture && !user.avatar?.includes('manual=true')) {
+          const picture = getPicture(profile);
+          if (picture && !user.avatar?.includes('manual=true')) {
             const imageBuffer = await downloadImage(profile.picture);
             if (imageBuffer) {
               let fileName;
