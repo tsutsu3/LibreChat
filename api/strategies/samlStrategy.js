@@ -38,31 +38,31 @@ const downloadImage = async (url) => {
 /**
  * Determines the full name of a user based on SAML profile and environment configuration.
  *
- * @param {Object} userinfo - The user information object from SAML Connect
- * @param {string} [userinfo.given_name] - The user's first name
- * @param {string} [userinfo.family_name] - The user's last name
- * @param {string} [userinfo.username] - The user's username
- * @param {string} [userinfo.email] - The user's email address
+ * @param {Object} profile - The user profile object from SAML Connect
+ * @param {string} [profile.given_name] - The user's first name
+ * @param {string} [profile.family_name] - The user's last name
+ * @param {string} [profile.username] - The user's username
+ * @param {string} [profile.email] - The user's email address
  * @returns {string} The determined full name of the user
  */
-function getFullName(userinfo) {
+function getFullName(profile) {
   if (process.env.SAML_NAME_CLAIM) {
-    return userinfo[process.env.SAML_NAME_CLAIM];
+    return profile[process.env.SAML_NAME_CLAIM];
   }
 
-  if (userinfo.given_name && userinfo.family_name) {
-    return `${userinfo.given_name} ${userinfo.family_name}`;
+  if (profile.given_name && profile.family_name) {
+    return `${profile.given_name} ${profile.family_name}`;
   }
 
-  if (userinfo.given_name) {
-    return userinfo.given_name;
+  if (profile.given_name) {
+    return profile.given_name;
   }
 
-  if (userinfo.family_name) {
-    return userinfo.family_name;
+  if (profile.family_name) {
+    return profile.family_name;
   }
 
-  return userinfo.username || userinfo.email;
+  return profile.username || profile.email;
 }
 
 /**
