@@ -507,6 +507,7 @@ export type TStartupConfig = {
   googleLoginEnabled: boolean;
   openidLoginEnabled: boolean;
   appleLoginEnabled: boolean;
+  samlLoginEnabled: boolean;
   openidLabel: string;
   openidImageUrl: string;
   samlLabel: string;
