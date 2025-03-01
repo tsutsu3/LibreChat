@@ -63,7 +63,7 @@ const configureSocialLogins = (app) => {
     app.use(passport.session());
     setupOpenId();
   }
-  if (process.env.SAML_ENTRY_POINT && process.env.SAML_ISSUER && process.env.SAML_CERT) {
+  if (process.env.SAML_METADATA) {
     const sessionOptions = {
       secret: process.env.SAML_SESSION_SECRET,
       resave: false,

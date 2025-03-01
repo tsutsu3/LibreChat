@@ -1,16 +1,71 @@
+const fs = require('fs');
+const path = require('path');
+const fetch = require('node-fetch');
+const { parseString } = require('xml2js');
 const passport = require('passport');
 const { Strategy: SamlStrategy } = require('passport-saml');
+const { MetadataReader } = require('passport-saml-metadata');
 const { findUser, createUser, updateUser } = require('~/models/userMethods');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { hashToken } = require('~/server/utils/crypto');
 const { logger } = require('~/config');
-const fetch = require('node-fetch');
 
 let crypto;
 try {
   crypto = require('node:crypto');
 } catch (err) {
   logger.error('[samlStrategy] crypto support is disabled!', err);
+}
+
+function isValidXml(content) {
+  let isValid = false;
+  parseString(content, (err, result) => {
+    if (!err && result) {
+      isValid = true;
+    }
+  });
+  return isValid;
+}
+
+/**
+ * Retrieves SAML metadata from an environment variable.
+ *
+ * This function checks the `SAML_METADATA` environment variable to determine
+ * if it contains a file path or a one-liner metadata XML. If it is a file path,
+ * the function reads and returns the file content. Otherwise, it returns the
+ * value of the environment variable directly.
+ *
+ * @throws {Error} If the `SAML_METADATA` environment variable is not set.
+ * @returns {string} The SAML metadata as a string.
+ */
+function getMetadata() {
+  const metadataEnv = process.env.SAML_METADATA;
+
+  if (!metadataEnv) {
+    throw new Error('SAML_METADATA environment variable is not set.');
+  }
+
+  let metadataContent;
+  const projectRoot = path.resolve(__dirname, '../../');
+  const metadataPath = path.resolve(projectRoot, metadataEnv);
+
+  if (fs.existsSync(metadataPath) && fs.statSync(metadataPath).isFile()) {
+    logger.info(`[samlStrategy] Loading SAML metadata from file: ${metadataPath}`);
+    metadataContent = fs.readFileSync(metadataPath, 'utf8');
+  } else {
+    logger.info('[samlStrategy] SAML metadata provided as an inline XML string.');
+    metadataContent = metadataEnv;
+  }
+
+  if (!isValidXml(metadataContent)) {
+    throw new Error(
+      'Error: Invalid SAML metadata.\n' +
+        'The content provided is not valid XML.\n' +
+        'Ensure that SAML_METADATA contains either a valid XML file path or a correct XML string.',
+    );
+  }
+
+  return metadataContent;
 }
 
 /**
@@ -122,14 +177,17 @@ function convertToUsername(input, defaultValue = '') {
 
 async function setupSaml() {
   try {
+    const metadata = new MetadataReader(getMetadata());
+
     const samlConfig = {
-      entryPoint: process.env.SAML_ENTRY_POINT,
-      issuer: process.env.SAML_ISSUER,
-      callbackUrl: process.env.DOMAIN_SERVER + process.env.SAML_CALLBACK_URL,
-      cert: process.env.SAML_CERT,
+      entryPoint: metadata.identityProviderUrl,
+      issuer: metadata.entityId,
+      path: process.env.SAML_CALLBACK_URL,
+      cert: metadata.signingCert,
     };
 
     passport.use(
+      'saml',
       new SamlStrategy(samlConfig, async (profile, done) => {
         try {
           logger.info(`[samlStrategy] SAML authentication received for NameID: ${profile.nameID}`);
