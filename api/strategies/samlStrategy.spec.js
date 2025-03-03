@@ -1,13 +1,13 @@
 const fs = require('fs');
 const fetch = require('node-fetch');
-const { Strategy: SamlStrategy } = require('passport-saml');
+const { Strategy: SamlStrategy } = require('@node-saml/passport-saml');
 const { findUser, createUser, updateUser } = require('~/models/userMethods');
 const { setupSaml, getMetadata } = require('./samlStrategy');
 
 // --- Mocks ---
 jest.mock('fs');
 jest.mock('node-fetch');
-jest.mock('passport-saml');
+jest.mock('@node-saml/passport-saml');
 jest.mock('~/models/userMethods', () => ({
   findUser: jest.fn(),
   createUser: jest.fn(),
