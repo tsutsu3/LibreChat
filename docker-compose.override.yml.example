@@ -56,8 +56,8 @@
 # # ADD SAML CERT FILE
 #   api:
 #     - type: bind
-#       source: ./cert.pem
-#       target: /app/ycert.pem
+#       source: ./your_cert.pem
+#       target: /app/your_cert.pem
 
 # # ADD MONGO-EXPRESS
 #   mongo-express:
